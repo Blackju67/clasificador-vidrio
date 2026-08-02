@@ -2,53 +2,60 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
 
-      - name: Cache Buildozer global directory
-        uses: actions/cache@v4
-        with:
-          path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
+    # 1. Configuración explícita de ccache para C/C++
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ runner.os }}-ccache-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-
+        max-size: 2G
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git openjdk-17-jdk ccache libffi-dev libssl-dev python3-setuptools pkg-config zip unzip
-          pip install --upgrade pip setuptools wheel
-          pip install "Cython==0.29.36" buildozer
+    # 2. Instalación de dependencias del sistema operativo
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          ccache \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          python3-pip \
+          python3-setuptools \
+          libffi-dev \
+          libssl-dev \
+          libsqlite3-dev
+        pip install --upgrade buildozer cython
 
-      - name: Build APK with Buildozer
-        run: |
-          buildozer init
-          sed -i 's/^title = .*/title = ClasificadorVidrio/' buildozer.spec
-          sed -i 's/^package.name = .*/package.name = glassapp/' buildozer.spec
-          sed -i 's/^package.domain = .*/package.domain = org.test/' buildozer.spec
-          sed -i 's/^requirements = .*/requirements = python3,kivy/' buildozer.spec
-          sed -i 's/# android.accept_sdk_license = .*/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/# android.archs = .*/android.archs = arm64-v8a/' buildozer.spec
-          sed -i 's/# android.api = .*/android.api = 33/' buildozer.spec
-          sed -i 's/# android.minapi = .*/android.minapi = 21/' buildozer.spec
-          sed -i 's/# android.ndk = .*/android.ndk = 25b/' buildozer.spec
-          buildozer -v android debug
+    # 3. Compilación de la APK
+    - name: Build APK with Buildozer
+      env:
+        USE_CCACHE: 1
+        CCACHE_DIR: ~/.ccache
+      run: |
+        buildozer android debug
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: GlassClassifier-APK
-          path: bin/*.apk
+    # 4. Generación del artefacto para descargar
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GlassClassifier-APK
+        path: bin/*.apk

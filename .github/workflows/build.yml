@@ -43,16 +43,28 @@ jobs:
           libsqlite3-dev
         pip install --upgrade buildozer cython
 
-    - name: Ensure buildozer.spec exists and build APK
+    - name: Auto-accept Android SDK Licenses & Build APK
       env:
         USE_CCACHE: 1
         CCACHE_DIR: ~/.ccache
       run: |
+        # Generar buildozer.spec si no existe
         if [ ! -f buildozer.spec ]; then
-          echo "buildozer.spec no encontrado. Creando uno por defecto..."
           buildozer init
           sed -i 's/android.archs = arm64-v8a, armeabi-v7a/android.archs = arm64-v8a/' buildozer.spec
         fi
+
+        # Aceptar automáticamente todas las licencias del SDK de Android
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
+        yes | buildozer android debug || true
+        
+        # Aceptar licencias descargadas si quedaron pendientes
+        if [ -d "$HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin" ]; then
+          yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        fi
+
+        # Ejecutar la compilación final
         buildozer android debug
 
     - name: Upload APK Artifact
